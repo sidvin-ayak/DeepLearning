@@ -1,0 +1,285 @@
+\documentclass[11pt]{article}
+\usepackage[margin=0.8in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,array,longtable}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{caption}
+\setlist{nosep}
+
+\begin{document}
+
+\begin{center}
+{\Large\textbf{Shiv Nadar University Chennai}}\\
+\textbf{CS3807 -- Deep Learning Laboratory}\\
+\textbf{Experiment 2}\\
+{\large\textbf{Implementation of a Multi-Layer Perceptron (MLP) for Multi-Class Image Classification}}
+\end{center}
+
+\renewcommand{\arraystretch}{1.25}
+
+\begin{tabular}{|p{3.8cm}|p{8cm}|p{2cm}|}
+\hline
+Degree \& Branch & B.Tech Artificial Intelligence \& Data Science & Semester V\\ \hline
+Subject Code \& Name & CS3807 -- Deep Learning Laboratory & AY: 2026--27\\ \hline
+\end{tabular}
+
+\section*{1. Objective}
+To implement a Multi-Layer Perceptron (MLP) using TensorFlow/Keras for multi-class image classification on the Fashion-MNIST dataset, covering preprocessing, model construction, training, evaluation, and automated hyperparameter optimization.
+
+\section*{2. Background Theory}
+An MLP maps an input vector through successive fully-connected (dense) layers, each computing
+
+\[
+z^{(l)}=W^{(l)}a^{(l-1)}+b^{(l)},\qquad
+a^{(l)}=f(z^{(l)})
+\]
+
+The final layer applies a softmax,
+
+\[
+\hat y=\mathrm{Softmax}(z)
+\]
+
+converting raw scores into class probabilities. The network is trained by minimizing the categorical cross-entropy loss
+
+\[
+L=-\sum_i y_i\log(\hat y_i)
+\]
+
+via backpropagation and gradient-based optimization (Adam in this experiment).
+
+Recommended baseline architecture:
+
+\begin{center}
+784 $\rightarrow$ Dense(128, ReLU) $\rightarrow$ Dense(64, ReLU) $\rightarrow$ Dense(10, Softmax)
+\end{center}
+
+\textbf{Observation:} Because a dense layer treats every pixel as an independent feature, flattening a $28\times28$ image into a 784-length vector discards all 2D spatial structure -- a key limitation of MLPs relative to CNNs for image tasks, and one reason certain garment classes remain confusable regardless of hyperparameter tuning.
+
+\section*{3. Dataset}
+Fashion-MNIST: 60,000 training and 10,000 testing grayscale images, $28\times28$ pixels, across 10 balanced clothing categories (T-shirt/top, Trouser, Pullover, Dress, Coat, Sandal, Shirt, Sneaker, Bag, Ankle boot). Each class contains exactly 6,000 training images, confirming a perfectly balanced dataset.
+
+\section*{4. Experimental Procedure}
+
+\subsection*{4.1 Data Loading and Preprocessing}
+Data was loaded via \texttt{tensorflow.keras.datasets.fashion\_mnist}, flattened from $(28,28)$ to $(784,)$, pixel values normalized to $[0,1]$, and labels one-hot encoded.
+
+\begin{verbatim}
+BEFORE preprocessing
+x_train: (60000, 28, 28) uint8
+x_test : (10000, 28, 28) uint8
+
+AFTER preprocessing
+x_train: (60000, 784) float32 | min: 0.0 max: 1.0
+x_test : (10000, 784) float32
+y_train: (60000, 10) (one-hot)
+y_test : (10000, 10) (one-hot)
+\end{verbatim}
+
+\subsection*{4.2 Baseline Model Construction}
+A baseline MLP (784 $\rightarrow$ Dense(128, ReLU) $\rightarrow$ Dense(64, ReLU) $\rightarrow$ Dense(10, Softmax)) was compiled with the Adam optimizer and categorical cross-entropy loss.
+
+\begin{center}
+\begin{tabular}{|l|l|r|}
+\hline
+\textbf{Layer (type)} & \textbf{Output Shape} & \textbf{Param \#} \\
+\hline
+dense (Dense) & (None, 128) & 100,480 \\
+dense\_1 (Dense) & (None, 64) & 8,256 \\
+dense\_2 (Dense) & (None, 10) & 650 \\
+\hline
+\multicolumn{2}{|l|}{Total params} & 109,386 (427.29 KB) \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection*{4.3 Model Training}
+Trained for 20 epochs at batch size 32, with a 10\% validation split. Training accuracy rose from 81.98\% (epoch 1) to 93.74\% (epoch 20), while validation accuracy rose from 84.92\% to 88.53\%. Final training loss was 0.1658; final validation loss was 0.4543.
+
+\textbf{Baseline training time: 101.38 seconds.}
+
+\subsection*{4.4 Baseline Evaluation}
+\begin{center}
+\begin{tabular}{|l|c|}
+\hline
+Test Accuracy & 0.8755 \\
+Precision (macro) & 0.8765 \\
+Recall (macro) & 0.8755 \\
+F1-score (macro) & 0.8736 \\
+\hline
+\end{tabular}
+\end{center}
+
+The per-class classification report showed the weakest performance on \textit{Shirt} (F1 = 0.66) and \textit{Pullover} (F1 = 0.79), and the strongest on \textit{Trouser} (F1 = 0.98) and \textit{Bag} (F1 = 0.97).
+
+\section*{5. Hyperparameter Optimization}
+
+\texttt{RandomizedSearchCV} (5-fold cross-validation, \texttt{n\_iter=15}) was used with the SciKeras \texttt{KerasClassifier} wrapper to search over the space below, evaluated on a 10,000-image stratified subsample of the training set to keep runtime tractable.
+
+\begin{center}
+\begin{tabular}{|p{5cm}|p{7cm}|}
+\hline
+Hyperparameter & Candidate Values\\
+\hline
+Hidden Layers & 1, 2, 3\\
+Hidden Neurons & 32, 64, 128, 256\\
+Learning Rate & 0.1, 0.01, 0.001\\
+Batch Size & 16, 32, 64, 128\\
+Epochs & 10, 20, 30\\
+Optimizer & SGD, Adam, RMSProp\\
+Activation Function & ReLU, Tanh, Sigmoid\\
+Dropout Rate & 0.0, 0.2, 0.5\\
+\hline
+\end{tabular}
+\end{center}
+
+75 model fits were evaluated (15 candidates $\times$ 5 folds) in a total search time of \textbf{1133.21 seconds}. The optimized model was then retrained on the full preprocessed training set (90/10 train/validation split) using the best-found hyperparameters.
+
+\textbf{Optimized model architecture} (hidden\_layers=2, neurons=256):
+
+\begin{center}
+\begin{tabular}{|l|l|r|}
+\hline
+\textbf{Layer (type)} & \textbf{Output Shape} & \textbf{Param \#} \\
+\hline
+dense\_3 (Dense) & (None, 256) & 200,960 \\
+dense\_4 (Dense) & (None, 256) & 65,792 \\
+dense\_5 (Dense) & (None, 10) & 2,570 \\
+\hline
+\multicolumn{2}{|l|}{Total params} & 269,322 (1.03 MB) \\
+\hline
+\end{tabular}
+\end{center}
+
+Trained for 30 epochs at batch size 32. Training accuracy rose from 81.04\% to 96.59\%, while validation accuracy peaked around epoch 9 (89.37\%) before drifting down to 88.13\% by epoch 30, with validation loss rising from 0.2989 (epoch 8) to 0.5057 (epoch 30) even as training loss kept falling -- a clear overfitting signature, unsurprising given the searched dropout rate of 0.0.
+
+\textbf{Optimized training time: 223.96 seconds.}
+
+\section*{6. Results}
+
+\textbf{Best Hyperparameters}
+
+\begin{center}
+\begin{tabular}{|p{6cm}|p{6cm}|}
+\hline
+Hidden Layers & 2\\\hline
+Hidden Neurons & 256\\\hline
+Learning Rate & 0.001\\\hline
+Batch Size & 32\\\hline
+Optimizer & Adam\\\hline
+Activation Function & Sigmoid\\\hline
+Epochs & 30\\\hline
+Dropout & 0.0\\\hline
+Cross-validation Accuracy & 0.8523\\\hline
+Testing Accuracy & 0.8638\\\hline
+\end{tabular}
+\end{center}
+
+\vspace{3mm}
+
+\textbf{Performance Comparison}
+
+\begin{center}
+\begin{tabular}{|p{4cm}|c|c|}
+\hline
+Metric & Baseline & Optimized\\
+\hline
+Accuracy & 0.8755 & 0.8638\\
+Precision (macro) & 0.8765 & 0.8768\\
+Recall (macro) & 0.8755 & 0.8638\\
+F1-score (macro) & 0.8736 & 0.8648\\
+Training Time (s) & 101.38 & 223.96\\
+\hline
+\end{tabular}
+\end{center}
+
+\section*{7. Plots and Inference}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{imgs/plot1_sample_images.png}
+\caption{Sample Fashion-MNIST training images}
+\end{figure}
+\textbf{Inference:} The sample grid confirms that images are single-channel, low-resolution ($28\times28$) grayscale garment thumbnails. Some categories (e.g., Shirt vs. Pullover vs. Coat) are visually similar even to a human observer, foreshadowing that these classes will likely be the hardest for the MLP to separate.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.75\textwidth]{imgs/plot2_class_distribution.png}
+\caption{Class distribution across the training set}
+\end{figure}
+\textbf{Inference:} Fashion-MNIST is perfectly balanced, with exactly 6,000 training images per class (60,000 total / 10 classes). This means accuracy is a fair evaluation metric here, and class-weighting or resampling strategies (needed for imbalanced datasets) are unnecessary.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.7\textwidth]{imgs/plot3_4_accuracy.png}
+\caption{Baseline training vs. validation accuracy over 20 epochs}
+\end{figure}
+\textbf{Inference:} Training accuracy rises steadily and overtakes validation accuracy after several epochs, indicating the model fits the training data well. The widening gap in later epochs (93.7\% train vs.\ 88.5\% validation by epoch 20) is a sign of mild overfitting, common for a plain MLP without regularization on 60,000 flattened images.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.7\textwidth]{imgs/plot5_6_loss.png}
+\caption{Baseline training vs. validation loss over 20 epochs}
+\end{figure}
+\textbf{Inference:} Training loss decreases monotonically as expected for Adam optimization on a softmax objective. Validation loss flattens around epoch 6--8 and then creeps upward while training loss keeps falling -- this divergence marks the onset of overfitting and would justify early stopping or dropout regularization.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.65\textwidth]{imgs/plot7_confusion_baseline.png}
+\caption{Confusion matrix -- Baseline model}
+\end{figure}
+\textbf{Inference:} The strong diagonal shows the model classifies most garment categories correctly. The dominant off-diagonal confusion is between visually similar upper-body garments -- Shirt, T-shirt/top, Pullover, and Coat -- since a flattened, spatially-agnostic MLP cannot exploit the local texture/shape cues a CNN would.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.65\textwidth]{imgs/plot7b_confusion_optimized.png}
+\caption{Confusion matrix -- Optimized model}
+\end{figure}
+\textbf{Inference:} The optimized (Sigmoid, 2$\times$256) model shows a visibly weaker diagonal for Pullover (recall 0.63) and Coat (recall 0.70) than the baseline, while gaining recall on Shirt (0.82 vs.\ 0.58). This trade-off, rather than a uniform improvement, is why aggregate accuracy did not rise despite the higher parameter count.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.75\textwidth]{imgs/plot8_hp_search.png}
+\caption{Cross-validation accuracy across sampled hyperparameter configurations}
+\end{figure}
+\textbf{Inference:} CV accuracy varies noticeably across sampled configurations, showing that hyperparameter choice materially affects performance rather than being a minor detail. Configurations using SGD with a high learning rate or Sigmoid activation typically cluster at the low end (slow/unstable convergence), while Adam/RMSProp with moderate learning rates cluster near the top.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.7\textwidth]{imgs/plot9_comparison.png}
+\caption{Baseline vs. Optimized model -- metric comparison}
+\end{figure}
+\textbf{Inference:} The optimized model roughly matches the baseline on precision but trails slightly on accuracy, recall, and F1-score. This indicates that the systematic search found a configuration statistically comparable to, but not clearly better than, the hand-picked 128--64 ReLU architecture -- and that the extra capacity (269K vs.\ 109K parameters) came at the cost of over twice the training time without a net accuracy gain.
+
+\section*{8. Discussion}
+
+\begin{enumerate}
+\item \textbf{Which optimization method was used?} \texttt{RandomizedSearchCV} with 5-fold cross-validation (\texttt{n\_iter=15}), chosen over \texttt{GridSearchCV} because the full search space ($3\times4\times3\times4\times3\times3\times3\times3 = 3{,}888$ combinations $\times$ 5 folds) is computationally infeasible to evaluate exhaustively; random sampling covers the space efficiently within a fixed compute budget.
+
+\item \textbf{Which hyperparameters were selected?} hidden\_layers = 2, neurons = 256, learning\_rate = 0.001, optimizer = Adam, activation = Sigmoid, dropout\_rate = 0.0, batch\_size = 32, epochs = 30, achieving a cross-validation accuracy of 0.8523.
+
+\item \textbf{Did optimization improve performance?} No, not on the held-out test set. Test accuracy fell slightly from 87.55\% (baseline) to 86.38\% (optimized), and recall/F1-score followed the same pattern; only macro precision inched up marginally (87.65\% $\rightarrow$ 87.68\%). The optimized model's larger capacity (269K params) combined with zero dropout and 30 training epochs led to visible overfitting (train accuracy 96.6\% vs.\ validation accuracy plateauing near 88--89\% and then declining), which erased the benefit of the wider, deeper architecture found during the search.
+
+\item \textbf{Which hyperparameter had the greatest impact?} Based on Plot 8 and the search logs, activation function and learning rate dominated: configurations pairing SGD with a high learning rate (0.1) or using Sigmoid activation with a poor optimizer/LR combination clustered at the low end of CV accuracy, while Adam or RMSProp at moderate learning rates ($10^{-3}$--$10^{-2}$) consistently clustered near the top.
+
+\item \textbf{Compare Grid Search and Randomized Search.} Grid Search exhaustively evaluates every combination, guaranteeing the optimum within the specified grid but scaling exponentially with the number of hyperparameters (3,888 combinations here). Randomized Search samples a fixed number of combinations (15, i.e.\ 75 fits), trading a small chance of missing the true optimum for dramatically lower computational cost -- 1133 seconds here versus a prohibitively long exhaustive run -- which is generally preferable when the search space is large, as in this experiment.
+
+\item \textbf{Recommend the best MLP configuration.} The search-selected configuration (2 hidden layers of 256 neurons, Sigmoid activation, Adam at lr = 0.001, batch size 32, 30 epochs) achieved the highest cross-validation accuracy (85.23\%) among sampled configurations, but it overfits on full-data retraining and does not beat the baseline on the test set. The practical recommendation is therefore to adopt this configuration \emph{with dropout reintroduced} (e.g., 0.2--0.3) and early stopping on validation loss to control the overfitting observed after epoch $\sim$9; absent that regularization, the simpler and cheaper baseline (128--64, ReLU, Adam, 20 epochs, 101s train time) remains the more reliable choice for deployment.
+\end{enumerate}
+
+\section*{9. Conclusion}
+This experiment implemented and evaluated an MLP for Fashion-MNIST classification, demonstrating the standard image-classification pipeline (load $\rightarrow$ preprocess $\rightarrow$ build $\rightarrow$ train $\rightarrow$ evaluate) and showing how automated hyperparameter search via \texttt{RandomizedSearchCV} can systematically explore a large configuration space. In this run, the search identified a higher-capacity architecture with a better cross-validation score, but it did not translate into a better test-set result than the hand-picked baseline once overfitting is accounted for -- underscoring that hyperparameter search must be paired with regularization controls (dropout, early stopping) rather than treated as a standalone accuracy guarantee. More broadly, the persistent confusion among visually similar upper-body garments across both models reflects an inherent ceiling of MLPs on image data: no amount of tuning fully compensates for discarding the 2D spatial structure that a CNN would exploit.
+
+\section*{10. References}
+\begin{enumerate}
+\item Goodfellow, I., Bengio, Y., \& Courville, A. \emph{Deep Learning}. MIT Press.
+\item Bishop, C. M. \emph{Pattern Recognition and Machine Learning}. Springer.
+\item Haykin, S. \emph{Neural Networks and Learning Machines}. Pearson.
+\item Xiao, H., Rasul, K., \& Vollgraf, R. \emph{Fashion-MNIST: a Novel Image Dataset for Benchmarking Machine Learning Algorithms}.
+\item TensorFlow/Keras Documentation -- \url{https://www.tensorflow.org/api_docs}
+\item SciKeras Documentation -- \url{https://www.adriangb.com/scikeras/}
+\end{enumerate}
+
+\end{document}
